@@ -284,10 +284,21 @@ cleanup() {
 
 	archive_logs "partial"
 
+	# Suite helpers run in subshells, so restore the isolated AWS settings for
+	# the clean-up functions in this parent shell.
+	if [[ -n ${TEST_DIR:-} && -f "${TEST_DIR}/aws/credentials" ]]; then
+		export AWS_SHARED_CREDENTIALS_FILE="${TEST_DIR}/aws/credentials"
+		export AWS_CONFIG_FILE="${TEST_DIR}/aws/config"
+		export AWS_PROFILE=default
+	fi
+
 	pop_daemon_scope 0
 
 	cleanup_jujus
 	cleanup_funcs
+	if [[ -n ${TEST_DIR:-} ]]; then
+		rm -rf "${TEST_DIR}/aws"
+	fi
 
 	echo ""
 	if [[ ${TEST_RESULT} != "success" ]]; then
@@ -322,7 +333,8 @@ archive_logs() {
 	if [[ -f ${OUTPUT_FILE} ]]; then
 		cp "${OUTPUT_FILE}" "${TEST_DIR}"
 	fi
-	TAR_OUTPUT=$(tar -C "${TEST_DIR}" --transform s/./artifacts/ -zcvf "${ARTIFACT_FILE}" ./ 2>&1)
+	# Generated AWS credentials must not be included in test artifacts.
+	TAR_OUTPUT=$(tar -C "${TEST_DIR}" --exclude='./aws' --transform s/./artifacts/ -zcvf "${ARTIFACT_FILE}" ./ 2>&1)
 	# shellcheck disable=SC2181
 	if [[ $? -eq 0 ]]; then
 		echo "==> Test ${archive_type} artifact: COMPLETED"
